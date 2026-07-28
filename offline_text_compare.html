@@ -1,0 +1,889 @@
+<!DOCTYPE html>
+<html lang="en" data-theme="dark">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Text Diff Comparison Tool</title>
+<style>
+* { box-sizing: border-box; margin: 0; padding: 0; }
+
+:root {
+  /* Dark Theme (Default) */
+  --bg: #1e1e1e;
+  --bg-alt: #252526;
+  --bg-elev: #2d2d2d;
+  --border: #3c3c3c;
+  --text: #d4d4d4;
+  --text-muted: #858585;
+  --text-dim: #6e7681;
+  --accent: #0e639c;
+  --accent-hover: #1177bb;
+  --btn-secondary-bg: #3a3d41;
+  --btn-secondary-hover: #4a4d51;
+  --scrollbar-thumb: #424242;
+  --scrollbar-hover: #4f4f4f;
+
+  /* Diff Highlight Colors (Kept consistent across themes) */
+  --remove-bg: rgba(248, 81, 73, 0.13);
+  --remove-bg-word: rgba(248, 81, 73, 0.45);
+  --add-bg: rgba(46, 160, 67, 0.13);
+  --add-bg-word: rgba(46, 160, 67, 0.45);
+  --modify-bg: rgba(180, 142, 38, 0.10);
+  
+  /* Diff Text Colors (Adapted for readability) */
+  --remove-fg: #f48771;
+  --add-fg: #73c991;
+  --modify-fg: #e2c08d;
+}
+
+:root[data-theme="light"] {
+  --bg: #ffffff;
+  --bg-alt: #f8f8f8;
+  --bg-elev: #f0f0f0;
+  --border: #e0e0e0;
+  --text: #333333;
+  --text-muted: #666666;
+  --text-dim: #999999;
+  --accent: #0e639c;
+  --accent-hover: #1177bb;
+  --btn-secondary-bg: #e1e1e1;
+  --btn-secondary-hover: #dcdcdc;
+  --scrollbar-thumb: #c1c1c1;
+  --scrollbar-hover: #a8a8a8;
+
+  /* Darker text colors for light mode legibility */
+  --remove-fg: #d1240f;
+  --add-fg: #22863a;
+  --modify-fg: #b08800;
+}
+
+html, body { height: 100%; overflow: hidden; }
+
+body {
+  font-family: 'Segoe UI', -apple-system, BlinkMacSystemFont, sans-serif;
+  background: var(--bg);
+  color: var(--text);
+  display: flex;
+  flex-direction: column;
+  font-size: 13px;
+}
+
+header {
+  background: var(--bg-alt);
+  border-bottom: 1px solid var(--border);
+  padding: 8px 16px;
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  flex-shrink: 0;
+  flex-wrap: wrap;
+}
+
+.logo {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 14px;
+  font-weight: 600;
+  color: var(--text);
+}
+
+.logo-icon {
+  width: 20px;
+  height: 16px;
+  display: inline-flex;
+  position: relative;
+}
+.logo-icon::before, .logo-icon::after {
+  content: '';
+  position: absolute;
+  width: 11px;
+  height: 16px;
+  border: 1.5px solid;
+  border-radius: 2px;
+  top: 0;
+}
+.logo-icon::before { left: 0; border-color: var(--remove-fg); }
+.logo-icon::after { right: 0; border-color: var(--add-fg); }
+
+.options {
+  display: flex;
+  gap: 12px;
+  align-items: center;
+  font-size: 12px;
+  color: var(--text-muted);
+  padding-left: 8px;
+  border-left: 1px solid var(--border);
+}
+.options label {
+  display: flex;
+  align-items: center;
+  gap: 5px;
+  cursor: pointer;
+  user-select: none;
+}
+.options input[type="checkbox"] { cursor: pointer; }
+
+.toolbar {
+  display: flex;
+  gap: 6px;
+  margin-left: auto;
+  align-items: center;
+}
+
+button {
+  background: var(--accent);
+  color: white;
+  border: none;
+  padding: 6px 14px;
+  border-radius: 4px;
+  cursor: pointer;
+  font-size: 12px;
+  font-family: inherit;
+  transition: background 0.15s, opacity 0.15s;
+  white-space: nowrap;
+}
+button:hover { background: var(--accent-hover); }
+button.secondary { background: var(--btn-secondary-bg); color: var(--text); }
+button.secondary:hover { background: var(--btn-secondary-hover); }
+button:disabled { opacity: 0.4; cursor: not-allowed; }
+
+.stats {
+  font-size: 12px;
+  display: flex;
+  gap: 6px;
+  align-items: center;
+  padding-left: 8px;
+  border-left: 1px solid var(--border);
+  min-width: 200px;
+}
+.stat-pill {
+  padding: 2px 8px;
+  border-radius: 10px;
+  font-weight: 600;
+  font-variant-numeric: tabular-nums;
+}
+.stat-add { background: rgba(46, 160, 67, 0.2); color: var(--add-fg); }
+.stat-rem { background: rgba(248, 81, 73, 0.2); color: var(--remove-fg); }
+.stat-mod { background: rgba(180, 142, 38, 0.2); color: var(--modify-fg); }
+
+.main {
+  flex: 1;
+  overflow: hidden;
+  display: flex;
+  flex-direction: column;
+}
+
+.input-view, .diff-view {
+  flex: 1;
+  overflow: hidden;
+  display: flex;
+}
+
+.hidden { display: none !important; }
+
+.input-pane, .diff-pane {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  border-right: 1px solid var(--border);
+  overflow: hidden;
+  min-width: 0;
+}
+.input-pane:last-child, .diff-pane:last-child { border-right: none; }
+
+.pane-header {
+  background: var(--bg-elev);
+  padding: 7px 14px;
+  font-size: 11px;
+  color: var(--text-muted);
+  border-bottom: 1px solid var(--border);
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  text-transform: uppercase;
+  letter-spacing: 0.6px;
+  flex-shrink: 0;
+  font-weight: 600;
+}
+
+.pane-header .count {
+  background: var(--bg-alt);
+  padding: 2px 8px;
+  border-radius: 3px;
+  color: var(--text-dim);
+  font-size: 10px;
+  font-weight: 500;
+}
+
+textarea {
+  flex: 1;
+  background: var(--bg);
+  color: var(--text);
+  border: none;
+  padding: 12px;
+  font-family: 'Consolas', 'SF Mono', 'Courier New', monospace;
+  font-size: 13px;
+  line-height: 1.5;
+  resize: none;
+  outline: none;
+  tab-size: 4;
+}
+textarea::placeholder { color: var(--text-dim); }
+
+.diff-content {
+  flex: 1;
+  overflow: auto;
+  font-family: 'Consolas', 'SF Mono', 'Courier New', monospace;
+  font-size: 13px;
+  line-height: 1.5;
+  background: var(--bg);
+  position: relative;
+}
+
+.diff-row {
+  display: flex;
+  width: max-content;
+  min-width: 100%;
+  min-height: 1.5em;
+  align-items: stretch;
+}
+
+.line-num {
+  flex: 0 0 52px;
+  background: var(--bg);
+  color: var(--text-dim);
+  text-align: right;
+  padding: 0 10px;
+  user-select: none;
+  position: sticky;
+  left: 0;
+  z-index: 1;
+  border-right: 1px solid var(--border);
+  font-variant-numeric: tabular-nums;
+}
+
+.line-content {
+  flex: 1 0 auto;
+  padding: 0 12px;
+  white-space: pre;
+  overflow: visible;
+}
+
+/* Row type backgrounds (Consistent across themes) */
+.row-equal { background: transparent; }
+.row-remove { background: var(--remove-bg); }
+.row-add { background: var(--add-bg); }
+.row-modify { background: var(--modify-bg); }
+
+.row-remove .line-num { background: var(--remove-bg); }
+.row-add .line-num { background: var(--add-bg); }
+.row-modify .line-num { background: var(--modify-bg); }
+
+/* Word-level inline highlights (Consistent across themes) */
+.word-remove {
+  background: var(--remove-bg-word);
+  text-decoration: line-through;
+  border-radius: 2px;
+  padding: 0 1px;
+}
+.word-add {
+  background: var(--add-bg-word);
+  border-radius: 2px;
+  padding: 0 1px;
+}
+
+.empty-row .line-content { color: var(--text-dim); }
+.empty-row .line-content::before {
+  content: '—';
+  color: var(--text-dim);
+  opacity: 0.4;
+}
+
+/* Current diff (navigation) */
+.diff-row.current {
+  box-shadow: inset 3px 0 0 var(--accent);
+}
+.diff-row.current .line-content {
+  background: rgba(14, 99, 156, 0.15);
+}
+
+.legend {
+  display: flex;
+  gap: 16px;
+  padding: 6px 16px;
+  background: var(--bg-alt);
+  border-top: 1px solid var(--border);
+  font-size: 11px;
+  color: var(--text-muted);
+  align-items: center;
+  flex-shrink: 0;
+  flex-wrap: wrap;
+}
+.legend-item { display: flex; align-items: center; gap: 6px; }
+.legend-swatch {
+  width: 14px;
+  height: 14px;
+  border-radius: 3px;
+  border: 1px solid rgba(127,127,127,0.2);
+}
+.hint { margin-left: auto; color: var(--text-dim); }
+.hint kbd {
+  background: var(--bg-elev);
+  padding: 1px 5px;
+  border-radius: 3px;
+  border: 1px solid var(--border);
+  font-family: inherit;
+  font-size: 10px;
+  color: var(--text-muted);
+}
+
+.nav-info {
+  font-size: 11px;
+  color: var(--text-dim);
+  font-variant-numeric: tabular-nums;
+  min-width: 50px;
+  text-align: center;
+}
+
+.footer-note {
+  text-align: center;
+  padding: 6px 16px;
+  font-size: 11px;
+  color: var(--text-dim);
+  background: var(--bg-alt);
+  border-top: 1px solid var(--border);
+  flex-shrink: 0;
+}
+
+/* Scrollbars */
+.diff-content::-webkit-scrollbar,
+textarea::-webkit-scrollbar { width: 12px; height: 12px; }
+.diff-content::-webkit-scrollbar-track,
+textarea::-webkit-scrollbar-track { background: var(--bg-alt); }
+.diff-content::-webkit-scrollbar-thumb,
+textarea::-webkit-scrollbar-thumb {
+  background: var(--scrollbar-thumb);
+  border-radius: 6px;
+  border: 2px solid var(--bg-alt);
+}
+.diff-content::-webkit-scrollbar-thumb:hover,
+textarea::-webkit-scrollbar-thumb:hover { background: var(--scrollbar-hover); }
+
+.identical-msg {
+  padding: 40px;
+  text-align: center;
+  color: var(--add-fg);
+  font-size: 14px;
+}
+.empty-msg {
+  padding: 40px;
+  text-align: center;
+  color: var(--text-dim);
+  font-size: 13px;
+}
+</style>
+</head>
+<body>
+
+<header>
+  <div class="logo">
+    <span class="logo-icon"></span>
+    <span>Text Diff</span>
+  </div>
+
+  <div class="options">
+    <label><input type="checkbox" id="ignoreCase"> Ignore Case</label>
+    <label><input type="checkbox" id="ignoreWs"> Ignore Whitespace</label>
+  </div>
+
+  <div class="toolbar">
+    <button id="prevBtn" class="secondary" disabled>▲ Prev</button>
+    <span class="nav-info" id="navInfo"></span>
+    <button id="nextBtn" class="secondary" disabled>▼ Next</button>
+    <button id="compareBtn">Compare</button>
+    <button id="editBtn" class="secondary hidden">Edit</button>
+    <button id="swapBtn" class="secondary">Swap</button>
+    <button id="clearBtn" class="secondary">Clear</button>
+    <button id="sampleBtn" class="secondary">Sample</button>
+    <button id="themeBtn" class="secondary">🌙 Dark Mode</button>
+  </div>
+
+  <div class="stats" id="stats"></div>
+</header>
+
+<div class="main">
+  <!-- Input view -->
+  <div class="input-view" id="inputView">
+    <div class="input-pane">
+      <div class="pane-header">
+        <span>Original · Version 1</span>
+        <span class="count" id="lineCountA">0 lines</span>
+      </div>
+      <textarea id="textA" placeholder="Paste original text here..." spellcheck="false"></textarea>
+    </div>
+    <div class="input-pane">
+      <div class="pane-header">
+        <span>Modified · Version 2</span>
+        <span class="count" id="lineCountB">0 lines</span>
+      </div>
+      <textarea id="textB" placeholder="Paste modified text here..." spellcheck="false"></textarea>
+    </div>
+  </div>
+
+  <!-- Diff view -->
+  <div class="diff-view hidden" id="diffView">
+    <div class="diff-pane">
+      <div class="pane-header">
+        <span>Original · Version 1</span>
+        <span class="count" id="leftStats"></span>
+      </div>
+      <div class="diff-content" id="leftPane"></div>
+    </div>
+    <div class="diff-pane">
+      <div class="pane-header">
+        <span>Modified · Version 2</span>
+        <span class="count" id="rightStats"></span>
+      </div>
+      <div class="diff-content" id="rightPane"></div>
+    </div>
+  </div>
+</div>
+
+<div class="legend">
+  <div class="legend-item"><span class="legend-swatch" style="background:var(--remove-bg)"></span>Removed line</div>
+  <div class="legend-item"><span class="legend-swatch" style="background:var(--remove-bg-word)"></span>Removed word</div>
+  <div class="legend-item"><span class="legend-swatch" style="background:var(--add-bg)"></span>Added line</div>
+  <div class="legend-item"><span class="legend-swatch" style="background:var(--add-bg-word)"></span>Added word</div>
+  <div class="legend-item"><span class="legend-swatch" style="background:var(--modify-bg)"></span>Modified line</div>
+  <div class="hint"><kbd>Ctrl</kbd>+<kbd>Enter</kbd> Compare · <kbd>Esc</kbd> Edit · <kbd>Alt</kbd>+<kbd>↑↓</kbd> Navigate</div>
+</div>
+
+<div class="footer-note">Developed by Arindam Giri. Jul 28 2026</div>
+
+<script>
+// ============ THEME TOGGLE ============
+function applyTheme(theme) {
+  document.documentElement.setAttribute('data-theme', theme);
+  const btn = document.getElementById('themeBtn');
+  btn.textContent = theme === 'dark' ? '☀️ Light Mode' : '🌙 Dark Mode';
+}
+
+// Load saved theme
+let savedTheme = 'dark';
+try {
+  savedTheme = localStorage.getItem('diff-theme') || 'dark';
+} catch(e) {}
+applyTheme(savedTheme);
+
+document.getElementById('themeBtn').addEventListener('click', () => {
+  const current = document.documentElement.getAttribute('data-theme');
+  const next = current === 'dark' ? 'light' : 'dark';
+  applyTheme(next);
+  try {
+    localStorage.setItem('diff-theme', next);
+  } catch(e) {}
+});
+
+// ============ DIFF ALGORITHM (LCS-based) ============
+
+function tokenize(s) {
+  return s.match(/\s+|\S+/g) || [];
+}
+
+function normalizeLine(line, ignoreCase, ignoreWs) {
+  let l = line;
+  if (ignoreWs) l = l.replace(/\s+/g, ' ').trim();
+  if (ignoreCase) l = l.toLowerCase();
+  return l;
+}
+
+function lcsDiff(a, b) {
+  const n = a.length, m = b.length;
+  if (n === 0) return b.map((_, j) => ({ type: 'add', bIdx: j }));
+  if (m === 0) return a.map((_, i) => ({ type: 'remove', aIdx: i }));
+
+  const dp = [];
+  for (let i = 0; i <= n; i++) dp.push(new Uint32Array(m + 1));
+  for (let i = n - 1; i >= 0; i--) {
+    for (let j = m - 1; j >= 0; j--) {
+      if (a[i] === b[j]) dp[i][j] = dp[i + 1][j + 1] + 1;
+      else dp[i][j] = Math.max(dp[i + 1][j], dp[i][j + 1]);
+    }
+  }
+
+  const ops = [];
+  let i = 0, j = 0;
+  while (i < n && j < m) {
+    if (a[i] === b[j]) {
+      ops.push({ type: 'equal', aIdx: i, bIdx: j });
+      i++; j++;
+    } else if (dp[i + 1][j] >= dp[i][j + 1]) {
+      ops.push({ type: 'remove', aIdx: i });
+      i++;
+    } else {
+      ops.push({ type: 'add', bIdx: j });
+      j++;
+    }
+  }
+  while (i < n) { ops.push({ type: 'remove', aIdx: i }); i++; }
+  while (j < m) { ops.push({ type: 'add', bIdx: j }); j++; }
+  return ops;
+}
+
+function diffWords(aStr, bStr) {
+  const a = tokenize(aStr);
+  const b = tokenize(bStr);
+  const ops = lcsDiff(a, b);
+  const merged = [];
+  for (const op of ops) {
+    const text = op.type === 'add' ? b[op.bIdx] : a[op.aIdx];
+    if (merged.length && merged[merged.length - 1].type === op.type) {
+      merged[merged.length - 1].text += text;
+    } else {
+      merged.push({ type: op.type, text });
+    }
+  }
+  return merged;
+}
+
+function buildRows(aLines, bLines, ignoreCase, ignoreWs) {
+  const aNorm = aLines.map(l => normalizeLine(l, ignoreCase, ignoreWs));
+  const bNorm = bLines.map(l => normalizeLine(l, ignoreCase, ignoreWs));
+
+  const ops = lcsDiff(aNorm, bNorm);
+  const rows = [];
+  let k = 0;
+
+  while (k < ops.length) {
+    if (ops[k].type === 'equal') {
+      rows.push({
+        type: 'equal',
+        aLine: aLines[ops[k].aIdx],
+        bLine: bLines[ops[k].bIdx],
+        aIdx: ops[k].aIdx + 1,
+        bIdx: ops[k].bIdx + 1
+      });
+      k++;
+    } else {
+      const removes = [];
+      const adds = [];
+      while (k < ops.length && ops[k].type !== 'equal') {
+        if (ops[k].type === 'remove') removes.push(ops[k].aIdx);
+        else adds.push(ops[k].bIdx);
+        k++;
+      }
+      const pairs = Math.min(removes.length, adds.length);
+      for (let p = 0; p < pairs; p++) {
+        const aLine = aLines[removes[p]];
+        const bLine = bLines[adds[p]];
+        rows.push({
+          type: 'modify',
+          aLine: aLine,
+          bLine: bLine,
+          aIdx: removes[p] + 1,
+          bIdx: adds[p] + 1,
+          wordDiff: diffWords(aLine, bLine)
+        });
+      }
+      for (let p = pairs; p < removes.length; p++) {
+        rows.push({ type: 'remove', aLine: aLines[removes[p]], bLine: null, aIdx: removes[p] + 1, bIdx: null });
+      }
+      for (let p = pairs; p < adds.length; p++) {
+        rows.push({ type: 'add', aLine: null, bLine: bLines[adds[p]], aIdx: null, bIdx: adds[p] + 1 });
+      }
+    }
+  }
+  return rows;
+}
+
+// ============ RENDERING ============
+
+function escapeHtml(s) {
+  return String(s)
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;');
+}
+
+let currentRows = [];
+let currentDiffIndices = [];
+let currentNavIdx = -1;
+
+function renderDiff() {
+  const textA = document.getElementById('textA').value;
+  const textB = document.getElementById('textB').value;
+  const ignoreCase = document.getElementById('ignoreCase').checked;
+  const ignoreWs = document.getElementById('ignoreWs').checked;
+
+  const aLines = textA.length === 0 ? [] : textA.split('\n');
+  const bLines = textB.length === 0 ? [] : textB.split('\n');
+
+  const rows = buildRows(aLines, bLines, ignoreCase, ignoreWs);
+  currentRows = rows;
+
+  let leftHtml = '';
+  let rightHtml = '';
+  const stats = { add: 0, remove: 0, modify: 0 };
+  currentDiffIndices = [];
+
+  rows.forEach((row, idx) => {
+    const cls = 'row-' + row.type;
+    const isDiff = row.type !== 'equal';
+    if (isDiff) {
+      currentDiffIndices.push(idx);
+      if (row.type === 'remove') stats.remove++;
+      else if (row.type === 'add') stats.add++;
+      else if (row.type === 'modify') stats.modify++;
+    }
+
+    if (row.type === 'equal') {
+      leftHtml += `<div class="diff-row ${cls}" data-idx="${idx}"><div class="line-num">${row.aIdx}</div><div class="line-content">${escapeHtml(row.aLine) || '&nbsp;'}</div></div>`;
+      rightHtml += `<div class="diff-row ${cls}" data-idx="${idx}"><div class="line-num">${row.bIdx}</div><div class="line-content">${escapeHtml(row.bLine) || '&nbsp;'}</div></div>`;
+    } else if (row.type === 'remove') {
+      leftHtml += `<div class="diff-row ${cls}" data-idx="${idx}"><div class="line-num">${row.aIdx}</div><div class="line-content">${escapeHtml(row.aLine) || '&nbsp;'}</div></div>`;
+      rightHtml += `<div class="diff-row ${cls} empty-row" data-idx="${idx}"><div class="line-num"></div><div class="line-content"></div></div>`;
+    } else if (row.type === 'add') {
+      leftHtml += `<div class="diff-row ${cls} empty-row" data-idx="${idx}"><div class="line-num"></div><div class="line-content"></div></div>`;
+      rightHtml += `<div class="diff-row ${cls}" data-idx="${idx}"><div class="line-num">${row.bIdx}</div><div class="line-content">${escapeHtml(row.bLine) || '&nbsp;'}</div></div>`;
+    } else if (row.type === 'modify') {
+      let leftContent = '';
+      let rightContent = '';
+      if (row.wordDiff) {
+        for (const w of row.wordDiff) {
+          if (w.type === 'equal') {
+            leftContent += escapeHtml(w.text);
+            rightContent += escapeHtml(w.text);
+          } else if (w.type === 'remove') {
+            leftContent += `<span class="word-remove">${escapeHtml(w.text)}</span>`;
+          } else if (w.type === 'add') {
+            rightContent += `<span class="word-add">${escapeHtml(w.text)}</span>`;
+          }
+        }
+      } else {
+        leftContent = escapeHtml(row.aLine) || '&nbsp;';
+        rightContent = escapeHtml(row.bLine) || '&nbsp;';
+      }
+      leftHtml += `<div class="diff-row ${cls}" data-idx="${idx}"><div class="line-num">${row.aIdx}</div><div class="line-content">${leftContent}</div></div>`;
+      rightHtml += `<div class="diff-row ${cls}" data-idx="${idx}"><div class="line-num">${row.bIdx}</div><div class="line-content">${rightContent}</div></div>`;
+    }
+  });
+
+  const leftPane = document.getElementById('leftPane');
+  const rightPane = document.getElementById('rightPane');
+
+  if (aLines.length === 0 && bLines.length === 0) {
+    leftPane.innerHTML = '<div class="empty-msg">No content</div>';
+    rightPane.innerHTML = '<div class="empty-msg">No content</div>';
+  } else {
+    leftPane.innerHTML = leftHtml || '<div class="empty-msg">No content</div>';
+    rightPane.innerHTML = rightHtml || '<div class="empty-msg">No content</div>';
+  }
+
+  const totalChanges = stats.add + stats.remove + stats.modify;
+  const statsEl = document.getElementById('stats');
+  if (aLines.length === 0 && bLines.length === 0) {
+    statsEl.innerHTML = '';
+  } else if (totalChanges === 0) {
+    statsEl.innerHTML = '<span style="color:var(--add-fg);font-weight:600;">✓ Identical</span>';
+  } else {
+    statsEl.innerHTML =
+      `<span class="stat-pill stat-rem">−${stats.remove}</span>` +
+      `<span class="stat-pill stat-add">+${stats.add}</span>` +
+      `<span class="stat-pill stat-mod">~${stats.modify}</span>`;
+  }
+
+  document.getElementById('leftStats').textContent = `${aLines.length} lines`;
+  document.getElementById('rightStats').textContent = `${bLines.length} lines`;
+
+  currentNavIdx = -1;
+  document.getElementById('prevBtn').disabled = currentDiffIndices.length === 0;
+  document.getElementById('nextBtn').disabled = currentDiffIndices.length === 0;
+  updateNavInfo();
+
+  setupSyncScroll();
+}
+
+function updateNavInfo() {
+  const info = document.getElementById('navInfo');
+  if (currentDiffIndices.length === 0) {
+    info.textContent = '';
+  } else {
+    info.textContent = `${currentNavIdx + 1}/${currentDiffIndices.length}`;
+  }
+}
+
+function navigateDiff(dir) {
+  if (currentDiffIndices.length === 0) return;
+  if (currentNavIdx === -1 && dir === -1) currentNavIdx = 0;
+  else currentNavIdx = (currentNavIdx + dir + currentDiffIndices.length) % currentDiffIndices.length;
+
+  const idx = currentDiffIndices[currentNavIdx];
+  const leftRow = document.querySelector(`#leftPane .diff-row[data-idx="${idx}"]`);
+  const rightRow = document.querySelector(`#rightPane .diff-row[data-idx="${idx}"]`);
+
+  document.querySelectorAll('.diff-row.current').forEach(r => r.classList.remove('current'));
+  if (leftRow) leftRow.classList.add('current');
+  if (rightRow) rightRow.classList.add('current');
+
+  if (leftRow) {
+    const pane = document.getElementById('leftPane');
+    const paneRect = pane.getBoundingClientRect();
+    const rowRect = leftRow.getBoundingClientRect();
+    if (rowRect.top < paneRect.top + 40 || rowRect.bottom > paneRect.bottom - 40) {
+      leftRow.scrollIntoView({ block: 'center', behavior: 'smooth' });
+    }
+  }
+  updateNavInfo();
+}
+
+function setupSyncScroll() {
+  const left = document.getElementById('leftPane');
+  const right = document.getElementById('rightPane');
+  let syncing = false;
+
+  left.onscroll = () => {
+    if (syncing) return;
+    syncing = true;
+    right.scrollTop = left.scrollTop;
+    syncing = false;
+  };
+  right.onscroll = () => {
+    if (syncing) return;
+    syncing = true;
+    left.scrollTop = right.scrollTop;
+    syncing = false;
+  };
+}
+
+// ============ EVENT HANDLERS ============
+
+function showInputView() {
+  document.getElementById('inputView').classList.remove('hidden');
+  document.getElementById('diffView').classList.add('hidden');
+  document.getElementById('compareBtn').classList.remove('hidden');
+  document.getElementById('editBtn').classList.add('hidden');
+  document.getElementById('textA').focus();
+}
+
+function showDiffView() {
+  document.getElementById('inputView').classList.add('hidden');
+  document.getElementById('diffView').classList.remove('hidden');
+  document.getElementById('compareBtn').classList.add('hidden');
+  document.getElementById('editBtn').classList.remove('hidden');
+  renderDiff();
+}
+
+document.getElementById('compareBtn').addEventListener('click', showDiffView);
+document.getElementById('editBtn').addEventListener('click', showInputView);
+
+document.getElementById('swapBtn').addEventListener('click', () => {
+  const a = document.getElementById('textA');
+  const b = document.getElementById('textB');
+  [a.value, b.value] = [b.value, a.value];
+  updateLineCounts();
+  if (!document.getElementById('diffView').classList.contains('hidden')) renderDiff();
+});
+
+document.getElementById('clearBtn').addEventListener('click', () => {
+  if (!confirm('Clear both text areas?')) return;
+  document.getElementById('textA').value = '';
+  document.getElementById('textB').value = '';
+  updateLineCounts();
+  showInputView();
+});
+
+document.getElementById('sampleBtn').addEventListener('click', () => {
+  document.getElementById('textA').value = `The quick brown fox jumps over the lazy dog.
+Lorem ipsum dolor sit amet, consectetur adipiscing elit.
+Sed do eiusmod tempor incididunt ut labore et dolore magna aliqua.
+Ut enim ad minim veniam, quis nostrud exercitation ullamco.
+Duis aute irure dolor in reprehenderit in voluptate velit esse.
+Excepteur sint occaecat cupidatat non proident, sunt in culpa.
+
+function greet(name) {
+  return "Hello, " + name;
+}
+
+const numbers = [1, 2, 3, 4, 5];
+const sum = numbers.reduce((a, b) => a + b, 0);
+console.log("Sum:", sum);
+
+// TODO: implement error handling
+function divide(a, b) {
+  return a / b;
+}`;
+
+  document.getElementById('textB').value = `The quick brown fox leaps over the lazy dog.
+Lorem ipsum dolor sit amet, consectetur adipiscing elit.
+Sed do eiusmod tempor incididunt ut labore et dolore magna aliqua.
+Ut enim ad minim veniam, quis nostrud exercitation ullamco laboris.
+Duis aute irure dolor in reprehenderit in voluptate velit esse cillum.
+Excepteur sint occaecat cupidatat non proident, sunt in culpa qui officia.
+Mollit anim id est laborum.
+
+function greet(name) {
+  const message = "Hello, " + name + "!";
+  return message;
+}
+
+const numbers = [1, 2, 3, 4, 5, 6, 7];
+const sum = numbers.reduce((a, b) => a + b, 0);
+const avg = sum / numbers.length;
+console.log("Sum:", sum, "Avg:", avg);
+
+function divide(a, b) {
+  if (b === 0) throw new Error("Division by zero");
+  return a / b;
+}`;
+
+  updateLineCounts();
+  showDiffView();
+});
+
+document.getElementById('prevBtn').addEventListener('click', () => navigateDiff(-1));
+document.getElementById('nextBtn').addEventListener('click', () => navigateDiff(1));
+
+document.getElementById('ignoreCase').addEventListener('change', () => {
+  if (!document.getElementById('diffView').classList.contains('hidden')) renderDiff();
+});
+document.getElementById('ignoreWs').addEventListener('change', () => {
+  if (!document.getElementById('diffView').classList.contains('hidden')) renderDiff();
+});
+
+function updateLineCounts() {
+  const a = document.getElementById('textA').value;
+  const b = document.getElementById('textB').value;
+  const aLines = a.length === 0 ? 0 : a.split('\n').length;
+  const bLines = b.length === 0 ? 0 : b.split('\n').length;
+  document.getElementById('lineCountA').textContent = `${aLines} lines`;
+  document.getElementById('lineCountB').textContent = `${bLines} lines`;
+}
+
+document.getElementById('textA').addEventListener('input', updateLineCounts);
+document.getElementById('textB').addEventListener('input', updateLineCounts);
+
+document.addEventListener('keydown', (e) => {
+  if ((e.ctrlKey || e.metaKey) && e.key === 'Enter') {
+    e.preventDefault();
+    if (!document.getElementById('inputView').classList.contains('hidden')) showDiffView();
+    else showInputView();
+  } else if (e.key === 'Escape') {
+    if (!document.getElementById('diffView').classList.contains('hidden')) showInputView();
+  } else if (e.altKey && e.key === 'ArrowDown') {
+    e.preventDefault();
+    navigateDiff(1);
+  } else if (e.altKey && e.key === 'ArrowUp') {
+    e.preventDefault();
+    navigateDiff(-1);
+  }
+});
+
+// Initial state
+updateLineCounts();
+document.getElementById('textA').focus();
+</script>
+
+</body>
+</html>
