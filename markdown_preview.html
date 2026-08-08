@@ -130,8 +130,7 @@ body {
 
 /* Main split */
 .main {
-  display: grid;
-  grid-template-columns: 1fr 1fr;
+  display: flex;
   overflow: hidden;
 }
 
@@ -140,10 +139,31 @@ body {
   flex-direction: column;
   overflow: hidden;
   min-width: 0;
+  flex: 1 1 50%;
 }
 
 .pane-left {
-  border-right: 1px solid var(--line);
+  flex-basis: 50%;
+}
+
+.gutter {
+  flex: 0 0 1px;
+  background: var(--line);
+  cursor: col-resize;
+  position: relative;
+  transition: background-color 200ms cubic-bezier(.22,1,.36,1);
+}
+
+.gutter::before {
+  content: '';
+  position: absolute;
+  top: 0; bottom: 0;
+  left: -4px; right: -4px;
+}
+
+.gutter:hover,
+.gutter.dragging {
+  background: var(--accent);
 }
 
 .pane-label {
@@ -382,8 +402,10 @@ body {
 
 /* Mobile */
 @media (max-width: 768px) {
-  .main { grid-template-columns: 1fr; grid-template-rows: 1fr 1fr; }
-  .pane-left { border-right: none; border-bottom: 1px solid var(--line); }
+  .main { flex-direction: column; }
+  .pane { flex-basis: 50% !important; }
+  .pane-left { border-bottom: 1px solid var(--line); }
+  .gutter { display: none; }
   .tools { gap: 1rem; }
   .footer { font-size: 9px; flex-direction: column; gap: 0.4rem; padding: 0.5rem 1rem; }
   .stats { gap: 1rem; }
@@ -419,8 +441,8 @@ body {
     </nav>
   </header>
 
-  <main class="main">
-    <section class="pane pane-left">
+  <main class="main" id="main">
+    <section class="pane pane-left" id="pane-left">
       <div class="pane-label">
         <span>EDITOR<span class="accent">/</span>RAW</span>
         <span id="cursor-pos">L1:C1</span>
@@ -429,6 +451,8 @@ body {
         <textarea id="editor" spellcheck="false" placeholder="# Paste your markdown here&#10;&#10;Left pane = raw text. Right pane = rendered output. No server, no autosave, nothing leaves your machine."></textarea>
       </div>
     </section>
+
+    <div class="gutter" id="gutter" role="separator" aria-orientation="vertical" aria-label="Resize panes"></div>
 
     <section class="pane pane-right">
       <div class="pane-label">
@@ -623,6 +647,43 @@ themeBtn.addEventListener('click', () => {
     setTheme('dark');
   }
 })();
+
+// ── Draggable gutter ──────────────────────────────────────────
+const main      = document.getElementById('main');
+const gutter    = document.getElementById('gutter');
+const leftPane  = document.getElementById('pane-left');
+let isDragging  = false;
+
+gutter.addEventListener('pointerdown', (e) => {
+  isDragging = true;
+  gutter.classList.add('dragging');
+  document.body.style.userSelect = 'none';
+  document.body.style.cursor = 'col-resize';
+  gutter.setPointerCapture(e.pointerId);
+  e.preventDefault();
+});
+
+gutter.addEventListener('pointermove', (e) => {
+  if (!isDragging) return;
+  const rect = main.getBoundingClientRect();
+  let x = e.clientX - rect.left;
+  const minWidth = 100;
+  if (x < minWidth) x = minWidth;
+  if (x > rect.width - minWidth) x = rect.width - minWidth;
+
+  const leftWidth = (x / rect.width) * 100;
+  leftPane.style.flexBasis = `${leftWidth}%`;
+});
+
+gutter.addEventListener('pointerup', (e) => {
+  if (isDragging) {
+    isDragging = false;
+    gutter.classList.remove('dragging');
+    document.body.style.userSelect = '';
+    document.body.style.cursor = '';
+    gutter.releasePointerCapture(e.pointerId);
+  }
+});
 
 // Boot with sample so the right pane is never empty on first paint
 editor.value = sample;
